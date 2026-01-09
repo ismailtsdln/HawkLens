@@ -1,8 +1,12 @@
 package api
 
 import (
+	"context"
+	"io"
+
 	"github.com/gin-gonic/gin"
 	"github.com/ismailtsdln/HawkLens/internal/db"
+	"github.com/ismailtsdln/HawkLens/internal/engine"
 	"github.com/ismailtsdln/HawkLens/pkg/plugins"
 )
 
@@ -30,7 +34,7 @@ func (s *Server) setupRoutes() {
 	{
 		api.GET("/plugins", s.listPlugins)
 		api.GET("/results", s.getResults)
-		api.POST("/scan", s.startScan)
+		api.GET("/scan-stream", s.streamScan)
 	}
 }
 
@@ -55,9 +59,43 @@ func (s *Server) getResults(c *gin.Context) {
 	c.JSON(200, results)
 }
 
-func (s *Server) startScan(c *gin.Context) {
-	// Placeholder for starting a scan
-	c.JSON(200, gin.H{"message": "scan started"})
+func (s *Server) streamScan(c *gin.Context) {
+	query := c.Query("query")
+	if query == "" {
+		c.JSON(400, gin.H{"error": "query is required"})
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Transfer-Encoding", "chunked")
+
+	pluginNames := plugins.ListPlugins()
+	dispatcher := engine.NewDispatcher(5)
+
+	// Create a context that is cancelled when the client disconnects
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+
+	dispatcher.Run(ctx)
+
+	for _, name := range pluginNames {
+		dispatcher.Submit(name, query)
+	}
+
+	c.Stream(func(w io.Writer) bool {
+		for wrapper := range dispatcher.Results() {
+			if wrapper.Error == nil {
+				for _, res := range wrapper.Results {
+					c.SSEvent("message", res)
+				}
+			}
+		}
+		return false // Close stream after dispatcher is done
+	})
+
+	dispatcher.Wait()
 }
 
 func (s *Server) Run(addr string) error {

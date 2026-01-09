@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"errors"
 	"sync"
 )
 
@@ -17,11 +18,14 @@ func Register(p Plugin) {
 }
 
 // GetPlugin retrieves a plugin by name
-func GetPlugin(name string) (Plugin, bool) {
+func GetPlugin(name string) (Plugin, error) {
 	mu.RLock()
 	defer mu.RUnlock()
 	p, ok := registry[name]
-	return p, ok
+	if !ok {
+		return nil, errors.New("plugin not found: " + name)
+	}
+	return p, nil
 }
 
 // ListPlugins returns names of all registered plugins

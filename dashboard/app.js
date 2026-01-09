@@ -1,11 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
     initCharts();
-    fetchData();
-
-    document.getElementById('refresh-btn').addEventListener('click', fetchData);
+    
+    document.getElementById('refresh-btn').addEventListener('click', () => {
+        const query = prompt("Enter search query:");
+        if (query) startStreamingScan(query);
+    });
 });
 
 let platformChart, sentimentChart;
+let allData = [];
 
 function initCharts() {
     const platformCtx = document.getElementById('platformChart').getContext('2d');
@@ -46,45 +49,47 @@ function initCharts() {
     });
 }
 
-async function fetchData() {
-    try {
-        // Mocking API fetch for demonstration since backend might not be live
-        const mockData = [
-            { platform: 'twitter', data_type: 'tweet', data: { text: 'OSINT is great!' }, created_at: new Date() },
-            { platform: 'youtube', data_type: 'video', data: { title: 'HawkLens Demo' }, created_at: new Date() },
-            { platform: 'reddit', data_type: 'post', data: { title: 'Deep analysis' }, created_at: new Date() },
-            { platform: 'instagram', data_type: 'post', data: { caption: 'Visualizing data' }, created_at: new Date() },
-            { platform: 'tiktok', data_type: 'trend', data: { hashtag: '#osint' }, created_at: new Date() }
-        ];
+function startStreamingScan(query) {
+    allData = [];
+    const tbody = document.querySelector('#results-table tbody');
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Streaming results for: <strong>' + query + '</strong>...</td></tr>';
+    
+    const eventSource = new EventSource(`/api/v1/scan-stream?query=${encodeURIComponent(query)}`);
 
-        updateDashboard(mockData);
-    } catch (error) {
-        console.error('Fetch error:', error);
-    }
+    eventSource.onmessage = (event) => {
+        const result = JSON.parse(event.data);
+        allData.push(result);
+        updateDashboard(allData);
+    };
+
+    eventSource.onerror = (err) => {
+        console.error("EventSource failed:", err);
+        eventSource.close();
+    };
 }
 
 function updateDashboard(data) {
     document.getElementById('total-results').innerText = data.length;
-    document.getElementById('total-scans').innerText = 1; // Mock
-
+    
     // Update Platform Chart
     const platformCounts = { twitter: 0, youtube: 0, reddit: 0, instagram: 0, tiktok: 0 };
-    data.forEach(item => platformCounts[item.platform]++);
+    data.forEach(item => platformCounts[item.platform.toLowerCase()]++);
     platformChart.data.datasets[0].data = Object.values(platformCounts);
     platformChart.update();
 
-    // Update Table
+    // Update Table (Newest first)
     const tbody = document.querySelector('#results-table tbody');
-    tbody.innerHTML = '';
-    data.forEach(item => {
-        const row = document.createElement('tr');
-        const summary = item.data.text || item.data.title || item.data.caption || item.data.hashtag;
-        row.innerHTML = `
-            <td><span class="badge badge-${item.platform}">${item.platform}</span></td>
-            <td>${item.data_type}</td>
-            <td>${summary}</td>
-            <td>${new Date(item.created_at).toLocaleTimeString()}</td>
-        `;
-        tbody.appendChild(row);
-    });
+    if (data.length === 1) tbody.innerHTML = ''; // Clear the "Streaming..." message
+    
+    const item = data[data.length - 1];
+    const row = document.createElement('tr');
+    const summary = item.data.text || item.data.title || item.data.caption || item.data.hashtag || "No summary";
+    
+    row.innerHTML = `
+        <td><span class="badge badge-${item.platform.toLowerCase()}">${item.platform}</span></td>
+        <td>${item.data_type}</td>
+        <td>${summary}</td>
+        <td>${new Date().toLocaleTimeString()}</td>
+    `;
+    tbody.prepend(row);
 }

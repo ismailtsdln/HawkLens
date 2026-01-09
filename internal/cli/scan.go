@@ -79,58 +79,53 @@ var scanAllCmd = &cobra.Command{
 
 		dispatcher.Wait()
 
-		var allResults []plugins.Result
 		table := tablewriter.NewWriter(os.Stdout)
 		table.Append([]string{"Platform", "Type", "Sentiment", "Topics", "Summary"})
 
-		for results := range resultsChan {
-			for _, res := range results {
-				var text string
-				switch res.Platform {
-				case "twitter":
-					text = res.Data["text"].(string)
-				case "youtube":
-					text = res.Data["title"].(string)
-				case "instagram":
-					text = res.Data["caption"].(string)
-				case "tiktok":
-					text = res.Data["hashtag"].(string)
-				case "reddit":
-					text = res.Data["title"].(string)
-				default:
-					text = fmt.Sprintf("%v", res.Data)
-				}
+		for _, res := range allResults {
+			var text string
+			switch res.Platform {
+			case "twitter":
+				text = res.Data["text"].(string)
+			case "youtube":
+				text = res.Data["title"].(string)
+			case "instagram":
+				text = res.Data["caption"].(string)
+			case "tiktok":
+				text = res.Data["hashtag"].(string)
+			case "reddit":
+				text = res.Data["title"].(string)
+			default:
+				text = fmt.Sprintf("%v", res.Data)
+			}
 
-				analysis := analytics.AnalyzeText(text)
+			analysis := analytics.AnalyzeText(text)
 
-				sentiment := analysis.Sentiment
-				if sentiment == "positive" {
-					sentiment = color.GreenString(sentiment)
-				} else if sentiment == "negative" {
-					sentiment = color.RedString(sentiment)
-				}
+			sentiment := analysis.Sentiment
+			if sentiment == "positive" {
+				sentiment = color.GreenString(sentiment)
+			} else if sentiment == "negative" {
+				sentiment = color.RedString(sentiment)
+			}
 
-				table.Append([]string{
-					color.YellowString(res.Platform),
-					res.DataType,
-					sentiment,
-					fmt.Sprintf("%v", analysis.Topics),
-					text,
-				})
+			table.Append([]string{
+				color.YellowString(res.Platform),
+				res.DataType,
+				sentiment,
+				fmt.Sprintf("%v", analysis.Topics),
+				text,
+			})
 
-				allResults = append(allResults, res)
-
-				if saveToDB {
-					pg, err := db.NewPostgresDB("postgres://user:pass@localhost:5432/hawklens?sslmode=disable")
-					if err == nil {
-						pg.SaveResult(&db.ScanResult{
-							Platform: res.Platform,
-							DataType: res.DataType,
-							Data:     res.Data,
-							Query:    query,
-						})
-						pg.Close()
-					}
+			if saveToDB {
+				pg, err := db.NewPostgresDB("postgres://user:pass@localhost:5432/hawklens?sslmode=disable")
+				if err == nil {
+					pg.SaveResult(&db.ScanResult{
+						Platform: res.Platform,
+						DataType: res.DataType,
+						Data:     res.Data,
+						Query:    query,
+					})
+					pg.Close()
 				}
 			}
 		}
