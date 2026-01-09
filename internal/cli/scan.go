@@ -3,11 +3,17 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/ismailtsdln/HawkLens/internal/analytics"
+	"github.com/ismailtsdln/HawkLens/internal/db"
+	"github.com/ismailtsdln/HawkLens/internal/engine"
 	"github.com/ismailtsdln/HawkLens/pkg/plugins"
+	"github.com/olekukonko/tablewriter"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -23,52 +29,113 @@ var scanAllCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		query := args[0]
-		fmt.Printf("Starting multi-platform scan for: %s\n\n", query)
+		color.Cyan("\n🔍 Starting multi-platform scan for: %s\n", query)
 
 		pluginNames := plugins.ListPlugins()
-		var wg sync.WaitGroup
-		resultsChan := make(chan []plugins.Result, len(pluginNames))
+
+		// Initialize Dispatcher with a worker pool size (e.g., 5)
+		dispatcher := engine.NewDispatcher(5)
+		dispatcher.Run(context.Background())
+
+		// Progress bar setup
+		bar := progressbar.NewOptions(len(pluginNames),
+			progressbar.OptionSetDescription("Scanning platforms..."),
+			progressbar.OptionSetWriter(os.Stderr),
+			progressbar.OptionShowCount(),
+			progressbar.OptionSetWidth(15),
+			progressbar.OptionClearOnFinish(),
+			progressbar.OptionSetTheme(progressbar.Theme{
+				Saucer:        "[green]⠿[reset]",
+				SaucerHead:    "[green]⠿[reset]",
+				SaucerPadding: " ",
+				BarStart:      "[",
+				BarEnd:        "]",
+			}),
+		)
 
 		startTime := time.Now()
 
+		// Submit jobs to dispatcher
 		for _, name := range pluginNames {
-			wg.Add(1)
-			go func(pluginName string) {
-				defer wg.Done()
-				p, _ := plugins.GetPlugin(pluginName)
-				res, err := p.Fetch(context.Background(), query)
-				if err != nil {
-					fmt.Printf("[%s] Error: %v\n", pluginName, err)
-					return
-				}
-				resultsChan <- res
-			}(name)
+			dispatcher.Submit(name, query)
 		}
 
+		// Collect results in a separate goroutine
+		var allResults []plugins.Result
+		var resultsMutex sync.Mutex
+
 		go func() {
-			wg.Wait()
-			close(resultsChan)
+			for wrapper := range dispatcher.Results() {
+				if wrapper.Error != nil {
+					color.Red("[%s] Error: %v\n", wrapper.Platform, wrapper.Error)
+					continue
+				}
+				resultsMutex.Lock()
+				allResults = append(allResults, wrapper.Results...)
+				resultsMutex.Unlock()
+				bar.Add(1)
+			}
 		}()
 
+		dispatcher.Wait()
+
 		var allResults []plugins.Result
+		table := tablewriter.NewWriter(os.Stdout)
+		table.Append([]string{"Platform", "Type", "Sentiment", "Topics", "Summary"})
+
 		for results := range resultsChan {
 			for _, res := range results {
-				// Perform NLP analysis
 				var text string
-				if res.Platform == "twitter" {
+				switch res.Platform {
+				case "twitter":
 					text = res.Data["text"].(string)
-				} else if res.Platform == "youtube" {
+				case "youtube":
 					text = res.Data["title"].(string)
-				} else if res.Platform == "instagram" {
+				case "instagram":
 					text = res.Data["caption"].(string)
+				case "tiktok":
+					text = res.Data["hashtag"].(string)
+				case "reddit":
+					text = res.Data["title"].(string)
+				default:
+					text = fmt.Sprintf("%v", res.Data)
 				}
 
 				analysis := analytics.AnalyzeText(text)
-				fmt.Printf("[%s] %s (Sentiment: %s, Topics: %v)\n", res.Platform, res.DataType, analysis.Sentiment, analysis.Topics)
+
+				sentiment := analysis.Sentiment
+				if sentiment == "positive" {
+					sentiment = color.GreenString(sentiment)
+				} else if sentiment == "negative" {
+					sentiment = color.RedString(sentiment)
+				}
+
+				table.Append([]string{
+					color.YellowString(res.Platform),
+					res.DataType,
+					sentiment,
+					fmt.Sprintf("%v", analysis.Topics),
+					text,
+				})
 
 				allResults = append(allResults, res)
+
+				if saveToDB {
+					pg, err := db.NewPostgresDB("postgres://user:pass@localhost:5432/hawklens?sslmode=disable")
+					if err == nil {
+						pg.SaveResult(&db.ScanResult{
+							Platform: res.Platform,
+							DataType: res.DataType,
+							Data:     res.Data,
+							Query:    query,
+						})
+						pg.Close()
+					}
+				}
 			}
 		}
+
+		table.Render()
 
 		if exportFormat != "" && exportPath != "" {
 			var err error
@@ -78,14 +145,14 @@ var scanAllCmd = &cobra.Command{
 				err = analytics.ExportToCSV(exportPath, allResults)
 			}
 			if err != nil {
-				fmt.Printf("Export error: %v\n", err)
+				color.Red("Export error: %v\n", err)
 			} else {
-				fmt.Printf("\nData exported to %s\n", exportPath)
+				color.Green("\n✅ Data exported to %s\n", exportPath)
 			}
 		}
 
 		duration := time.Since(startTime)
-		fmt.Printf("\nDone! Found %d results in %v across %d platforms.\n", len(allResults), duration, len(pluginNames))
+		color.Cyan("\n🏁 Done! Found %d results in %v across %d platforms.\n", len(allResults), duration, len(pluginNames))
 	},
 }
 
