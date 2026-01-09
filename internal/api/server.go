@@ -2,6 +2,8 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/ismailtsdln/HawkLens/internal/db"
+	"github.com/ismailtsdln/HawkLens/pkg/plugins"
 )
 
 type Server struct {
@@ -21,21 +23,36 @@ func NewServer() *Server {
 
 func (s *Server) setupRoutes() {
 	s.router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status": "up",
-		})
+		c.JSON(200, gin.H{"status": "up"})
 	})
 
 	api := s.router.Group("/api/v1")
 	{
 		api.GET("/plugins", s.listPlugins)
+		api.GET("/results", s.getResults)
 		api.POST("/scan", s.startScan)
 	}
 }
 
 func (s *Server) listPlugins(c *gin.Context) {
-	// Placeholder for listing plugins
-	c.JSON(200, gin.H{"plugins": []string{"twitter", "youtube"}})
+	c.JSON(200, gin.H{"plugins": plugins.ListPlugins()})
+}
+
+func (s *Server) getResults(c *gin.Context) {
+	platform := c.Query("platform")
+	pg, err := db.NewPostgresDB("postgres://user:pass@localhost:5432/hawklens?sslmode=disable")
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Database connection failed"})
+		return
+	}
+	defer pg.Close()
+
+	results, err := pg.ListResults(platform)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to fetch results"})
+		return
+	}
+	c.JSON(200, results)
 }
 
 func (s *Server) startScan(c *gin.Context) {

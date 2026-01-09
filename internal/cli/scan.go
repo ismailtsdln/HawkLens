@@ -6,8 +6,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ismailtsdln/HawkLens/internal/analytics"
 	"github.com/ismailtsdln/HawkLens/pkg/plugins"
 	"github.com/spf13/cobra"
+)
+
+var (
+	exportFormat string
+	exportPath   string
+	saveToDB     bool
 )
 
 var scanAllCmd = &cobra.Command{
@@ -38,25 +45,53 @@ var scanAllCmd = &cobra.Command{
 			}(name)
 		}
 
-		// Close channel when all goroutines finish
 		go func() {
 			wg.Wait()
 			close(resultsChan)
 		}()
 
-		totalResults := 0
+		var allResults []plugins.Result
 		for results := range resultsChan {
 			for _, res := range results {
-				fmt.Printf("[%s] %s found data: %v\n", res.Platform, res.DataType, res.Data)
-				totalResults++
+				// Perform NLP analysis
+				var text string
+				if res.Platform == "twitter" {
+					text = res.Data["text"].(string)
+				} else if res.Platform == "youtube" {
+					text = res.Data["title"].(string)
+				} else if res.Platform == "instagram" {
+					text = res.Data["caption"].(string)
+				}
+
+				analysis := analytics.AnalyzeText(text)
+				fmt.Printf("[%s] %s (Sentiment: %s, Topics: %v)\n", res.Platform, res.DataType, analysis.Sentiment, analysis.Topics)
+
+				allResults = append(allResults, res)
+			}
+		}
+
+		if exportFormat != "" && exportPath != "" {
+			var err error
+			if exportFormat == "json" {
+				err = analytics.ExportToJSON(exportPath, allResults)
+			} else if exportFormat == "csv" {
+				err = analytics.ExportToCSV(exportPath, allResults)
+			}
+			if err != nil {
+				fmt.Printf("Export error: %v\n", err)
+			} else {
+				fmt.Printf("\nData exported to %s\n", exportPath)
 			}
 		}
 
 		duration := time.Since(startTime)
-		fmt.Printf("\nDone! Found %d results in %v across %d platforms.\n", totalResults, duration, len(pluginNames))
+		fmt.Printf("\nDone! Found %d results in %v across %d platforms.\n", len(allResults), duration, len(pluginNames))
 	},
 }
 
 func init() {
+	scanAllCmd.Flags().StringVarP(&exportFormat, "format", "f", "", "Export format (json|csv)")
+	scanAllCmd.Flags().StringVarP(&exportPath, "output", "o", "", "Export output path")
+	scanAllCmd.Flags().BoolVarP(&saveToDB, "db", "d", false, "Save results to PostgreSQL database")
 	rootCmd.AddCommand(scanAllCmd)
 }

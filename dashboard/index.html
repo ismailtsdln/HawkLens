@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HawkLens | Multi-Platform OSINT Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div class="glass-container">
+      <header>
+        <div class="logo">
+          <span class="icon">🦅</span>
+          <h1>HawkLens</h1>
+        </div>
+        <nav>
+          <button id="refresh-btn" class="btn-primary">Refresh Data</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="stats-grid">
+          <div class="stat-card">
+            <h3>Total Scans</h3>
+            <p id="total-scans">0</p>
+          </div>
+          <div class="stat-card">
+            <h3>Data Points</h3>
+            <p id="total-results">0</p>
+          </div>
+          <div class="stat-card">
+            <h3>Sentiment</h3>
+            <p id="avg-sentiment">Neutral</p>
+          </div>
+        </section>
+
+        <section class="charts-grid">
+          <div class="chart-container">
+            <h3>Platform Distribution</h3>
+            <canvas id="platformChart"></canvas>
+          </div>
+          <div class="chart-container">
+            <h3>Sentiment Analysis</h3>
+            <canvas id="sentimentChart"></canvas>
+          </div>
+        </section>
+
+        <section class="recent-results">
+          <h3>Recent Findings</h3>
+          <div class="table-wrapper">
+            <table id="results-table">
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Type</th>
+                  <th>Summary</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Results will be injected here -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

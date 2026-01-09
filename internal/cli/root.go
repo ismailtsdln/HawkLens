@@ -4,15 +4,27 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
+
+var banner = `
+  _    _                _   _                      
+ | |  | |              | | | |                     
+ | |__| | __ _ __      | | | | ___ _ __  ___       
+ |  __  |/ _' | \ \ /\ / / | |/ _ \ '_ \/ __|      
+ | |  | | (_| |  \ V  V /  | |  __/ | | \__ \      
+ |_|  |_|\__,_|   \_/\_/   |_|\___|_| |_|___/      
+                                                   
+   Multi-Platform Social OSINT & Analytics
+`
 
 var rootCmd = &cobra.Command{
 	Use:   "hawklens",
 	Short: "HawkLens is a multi-platform social OSINT & analytics framework",
-	Long: `HawkLens is a modern, high-performance OSINT tool designed to collect and analyze 
-data from various social media platforms like Twitter, YouTube, Reddit, and more.`,
+	Long:  color.CyanString(banner) + "\nHawkLens is a modern, high-performance OSINT tool designed to collect and analyze data from various social media platforms.",
 	Run: func(cmd *cobra.Command, args []string) {
+		color.Cyan(banner)
 		fmt.Println("Welcome to HawkLens! Use --help to see available commands.")
 	},
 }
